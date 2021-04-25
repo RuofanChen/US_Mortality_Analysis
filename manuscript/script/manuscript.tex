@@ -1,0 +1,79 @@
+\documentclass[a4paper]{article}
+
+%% Language and font encodings
+\usepackage[english]{babel}
+\usepackage[utf8x]{inputenc}
+\usepackage[T1]{fontenc}
+
+%% Sets page size and margins
+\usepackage[a4paper,top=3cm,bottom=2cm,left=3cm,right=3cm,marginparwidth=1.75cm]{geometry}
+
+%% Useful packages
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage[colorinlistoftodos]{todonotes}
+\usepackage[colorlinks=true, allcolors=blue]{hyperref}
+\usepackage{float}
+\usepackage{enumerate}
+\usepackage{subfig}
+\usepackage{titling}
+
+\setlength{\droptitle}{-11em}   % This is your set screw
+
+\title{Final Project Proposal}
+\author{Ruofan Chen    2862919}
+\date{}
+
+\begin{document}
+\maketitle
+\vspace*{-1cm}
+
+%\begin{abstract}
+%\end{abstract}
+
+\section{Background and Purpose}
+
+%The CDC provides the public dataset “Mortality Multiple Cause Files”, which contains the record for mortality events and their corresponding information, including the demographical description, category of death, the diagnosis of the latent causes and other follow-up. Hence, an interesting point will be suicide risk screening based on the demographical and other info. To realize the analysis, a weighted logistic regression for classification will be established with other covariates (e.g. education status, gender, age, marital and etc.) With the established model, we can interpret the effect of each covariate to the odds ratio of the suicide risk. To have a more insightful conclusion with simplest form, the sparsity is encouraged by adding a lasso penalty.
+%Besides, if time is sufficient, I will also involve the external data from Kansas Health Information Network (KHIN) after the data desensitization. T. Tony Cai et.al (2020) proposed a scheme for linear transfer learning that utilize the source dataset to improve the performance of estimator on the target dataset. In this project, we explore the way to extend the proposed scheme to the case of general linear model.
+
+The CDC provides the public dataset “Mortality Multiple Cause Files”, which contains the record for mortality events and their corresponding information, including the demographical description, category of death, the diagnosis of the latent causes and other follow-up. Hence, an interesting point will be suicide risk screening based on the demographical and other info. On the first stage, a descriptive analysis will be carried out, the boxplot, distribution curve plot and other useful visualization will be used. To realize the analysis, a weighted logistic regression for the imbalanced data set classification will be established with other covariates (e.g. education status, gender, age, marital and etc.) With the established model, we can interpret the effect of each covariate to the odds ratio of the suicide risk. To have a more insightful conclusion with simplest form, the sparsity is encouraged by adding a lasso penalty. To verify the conclusion and validation of the model, other model selection tool such as Mallows's $C_p$, VIF and the residual analysis will be adopted.
+Besides, if time is sufficient, I will also involve the external data from Kansas Health Information Network (KHIN) after the data desensitization. T. Tony Cai et.al (2020) proposed a scheme for linear transfer learning that utilize the source dataset to improve the performance of estimator on the target dataset. In this project, we explore the way to extend the proposed scheme to the case of general linear model.
+
+
+\section{Data Source and Description}
+\small
+\begin{itemize}
+	\item Data source: \url{https://www.cdc.gov/nchs/data_access/vitalstatsonline.htm#Mortality_Multiple}
+	\item Data description: \url{https://www.cdc.gov/nchs/data/dvs/Multiple-Cause-Record-Layout-2019-508.pdf}
+\end{itemize}
+\normalsize
+\section{Time Line and Statistical Method}
+
+\begin{itemize}
+  \item Data extraction and sorting (before March 25th)
+  \item Descriptive analysis (before April 1st): Boxplot, distribution curve plot and scatter matrix plot for correlation analysis.
+  \item Weighted logistic regression with L1 penalty (before April 10th): For the weighted logistic regression with L1 penalty, the predicting model is:
+  \begin{equation*}
+  P\left( {y\left| x \right.} \right) = \frac{{\exp \left( {{x^T}\beta y} \right)}}{{1 + \exp \left( {{x^T}\beta y} \right)}},
+  \end{equation*}
+  where $x$ is the covariate vector (after precessing such as dummy transformation or the normalization). The optimization task should be:
+  \begin{equation*}
+\hat \beta  \in \mathop {\arg \min }\limits_\beta  \frac{1}{n}\sum\limits_{i = 1}^n \frac{1}{w_i}{\log \left( {1 + \exp \left( { - {x_i}^T\beta {y_i}} \right)} \right)}  + \lambda {\left\| \beta  \right\|_1}.
+  \end{equation*}
+  \item Hypothesis test by deviance (before April 15th): To determine whether $\beta_j$ is not 0, the statistics could be
+  \begin{equation*}
+  {G^2} = D\left( R \right) - D\left( F \right) \sim {\chi ^2}\left( 1 \right),
+  \end{equation*}
+  where $D\left( R \right)$ is the deviance for reduced model with $\beta_j=0$.
+  \item Transfer learning method I'd like to play with (before April 30th): Step 1, train
+  \begin{equation*}
+\hat w \in \mathop {\arg \min }\limits_w \frac{1}{{\left| {{I_S} \cup {I_T}} \right|}}\sum\limits_{i \in {I_S} \cup {I_T}} {\log \left( {1 + \exp \left( { - {x_i}^Tw{y_i}} \right)} \right)}  + \lambda {\left\| w \right\|_1},
+  \end{equation*}
+  where $I_S$ and $I_T$ are sample index for source dataset and target dataset. Then step 2 will be the estimation of the "parameter gap"
+\begin{equation*}
+\hat \delta  \in \mathop {\arg \min }\limits_\delta  \frac{1}{{\left| {{I_S}} \right|}}\sum\limits_{i \in {I_S}} {\log \left( {1 + \exp \left( { - {x_i}^T\left( {\hat w + \delta } \right){y_i}} \right)} \right)}  + \lambda {\left\| \delta  \right\|_1}.
+\end{equation*}
+Finally, output the improved estimator of $\beta$ as $\hat \beta  = \hat w + \hat \delta $.
+\end{itemize}
+
+\end{document}
