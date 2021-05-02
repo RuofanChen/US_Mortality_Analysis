@@ -1,0 +1,249 @@
+---
+title: "Insurance Cross Sell Prediction"
+author: "Ruofan Chen"
+output: pdf_document
+toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(comment = NA)
+```
+
+\newpage
+# Abstract
+Cross-selling is the action or practice of selling an additional product or service to an existing customer. The objective of cross-selling can be either to increase the income derived from the client or to protect the relationship with the client or clients. This project uses data provided by JantaHack to discover the problem if the customer who already purchased health insurance from one company, would be interested in the same company's vehicle insurance, the logistic regression model with regularization and support vector machine (SVM) are used. After clarifying that the distribution of respond variable is unbalanced, two methods are utilized in these two models, including downsampling technique and weighted loss function. The data preprocessing process includes checking for missing values and selecting variables related to the response, and converting some categorical variables. Data description is carried out, related summary tables and plots are generated. To find the optimal penalized parameters, a 5-fold cross-validation grid search is performed on specific intervals. Logistic regression model and support vector machine model are established by using weighted loss function or downsampling method. Finally, the weighted logistic regression model with the highest area under the ROC curve (AUC) as 0.84476 is selected as the best model.  
+  
+  
+
+**Key Words**: GLM, logistic regression, support vector machine (SVM), regularization, down sampling, weighted loss function, area under ROC curve (AUC)
+
+
+# Section 1. Introduction
+
+Cross-selling identifies products or services that satisfy additional, complementary needs that are unfulfilled by the original product that a customer possesses. Oftentimes, cross-selling points users to products they would have purchased anyway; by showing them at the right time, a store ensures they make the sale. For the insurance industry, an insurance company usually provides coverage and policies for various products, such as health insurance, vehicle insurance, and residence insurance. Establishing a model to predict whether a customer would be interested in Vehicle Insurance is extremely helpful for the company because it can then accordingly plan its communication strategy to reach out to those customers and optimize its business model and revenue.  
+  
+This project is a Kaggle competition conducted by a company, and some participants released their methods on the Leaderboard. This project uses different methods and models from them, combined with different processing methods for unbalanced data, which is not common in R problem solving (some methods use only one remedy, such as resampling technique).  
+  
+The project aims to conduct research: predict whether previous health insurance policyholders are interested in purchasing vehicle insurance. This project uses the logistic regression model with regularization and SVM model. In the following sections of the report, the most important characteristics of the dataset will be discussed, how to develop the model, and some final results of the data will be used as conclusions. In section two, data description develops some basic information of the dataset. The third section, Models and Methods, discusses the final chosen model and its performance. The summary and the concluding remarks illustrate the final results and some comments about every model. The Appendix contains the definition of variables, plots, and model-related model supplements.
+  
+# Section 2. Data Description
+
+The dataset used in the project is a public dataset on Kaggle, see <https://www.kaggle.com/shivan118/crosssell-prediction>. There are 381,109 observations, including 12 variables and no missing values. For this research, the variable Response is set as the dependent variable. Before determining to set which variables as predictors, examination and description of the data are necessary.  
+  
+Table 1 shows the first six observations. For the definition of the variables, please see Appendix A.2.
+
+```{r, echo=FALSE}
+setwd('D:/data/semester3/5665/5665-Project/archive/train')
+train <- read.csv('train.csv')
+names(train) <- c('id','Gender','Age','DL','RC','PI','VA','VD','AP','PSC','Vintage','Response')
+train_head <- head(train)
+knitr::kable(train_head,col.names = gsub("[.]", " ", names(train)),align = "lccrr", caption ='First Six Observations')
+```
+
+After examining all variables, it shows that the variable 'id' has nothing to do with 'Response'. The variable 'RC' represents the code of the customer's area, with a total of 53 levels. Variable 'PSC' indicates how the company can outreach the customer and has 155 levels. Levels with a few observations will be removed. All observations that do not belong to the highest 6 frequency levels will be placed on a new level, named '200'. The purpose of this dimensionality reduction is to make the design matrix smaller, which can save a lot of time-consuming the algorithm. Another transformation is about the Response variable: set indicator 0 to 'No' and 1 to 'Yes'.  
+  
+Output 1 is a summary of these variables. The Response variable distributes unbalanced. Some variable descriptive analyses are provided in Appendix A.3.
+
+```{r,warning=FALSE,include=FALSE}
+library(tidyverse)
+```
+
+```{r,warning=FALSE,echo=FALSE}
+train1 <- train %>% mutate(`Gender` = as.factor(`Gender`), 
+                       DL = as.factor(`DL`),
+                       RC= as.factor(`RC`),
+                       PI = as.factor(`PI`),
+                       VA= as.factor(`VA`),
+                       VD = as.factor(`VD`),
+                       PSC = as.factor(`PSC`),
+                       Response=as.factor(`Response`))
+train1 <- train1 %>% select(`Age`, `AP`,`Vintage`: `Gender`,
+                        `DL`, `RC`, 
+                        `PI`, `VA`,`VD`,
+                        `PSC`,
+                        `Response`)
+
+# some levels have a small number of observation
+# dropped unused levels of policy_sales_channel
+
+# generate new level called '200', if not belongs to
+#'152','26','124','160','156','122'
+levels(train1$PSC) <- c(levels(train1$PSC),'200')
+
+train1[!(train1$PSC %in% c('152','26',
+                                        '124','160','156','122')),4] <- as.factor(200)
+train1$PSC <- droplevels(train1$PSC)
+
+# drop levels of region_code
+levels(train1$RC) <- c(levels(train1$RC),'200')
+
+train1[!(train1$RC%in% c('28','8',
+                                        '46','41','15','30')),8] <- as.factor(200)
+train1$RC<- droplevels(train1$RC)
+
+levels(train1$Response) <- c("No", "Yes")
+```
+
+\begin{center} 
+Output 1 Summary of Variables
+\end{center}  
+
+```{r,warning=FALSE,echo=FALSE}
+summary(train1)
+```
+  
+
+# Section 3. Models and Methods
+
+## 3.1 Downsampling Method
+
+DownSample will randomly sample a data set so that the frequency of the majority class is same with the frequency of the minority class. Due to the large sample size, down-sampling is appropriate when considering computer calculation time.
+
+## 3.2 Logistic Regression with Regularization  
+
+Formula 1 is the logistic regression model. Here, 'Response' is set as the response variable, which is labeled Y, and follows the Bernoulli distribution with parameter p. In addition, each observation is independent. The notation p is a binomial parameter representing the probability of occurrence of the 'Response'.  
+
+The hypothesis is probability p follows a logistic distribution. $\beta_0$ represents the intercept, $\beta_j$ (j from 1 to 10) represents the partial coefficient of increasing 1 unit on $X_j$ while holding all other predictors fixed, the change of log odds.  
+
+\begin{align}
+logit(p_i)=log(\frac{p_i}{1-p_i})=x_i'\beta=\beta_0+\beta_1X_{Age}+\beta_2X_{AP}+...+\beta_{10}X_{DL}
+\end{align}  
+
+The objective function for the penalized logistic regression uses the negative binomial log-likelihood and is shown in Formula 2. The elastic-net penalty is controlled by $\alpha$, and bridges the gap between lasso ($\alpha$ = 1, the default) and ridge ($\alpha$ = 0). The tuning parameter $\lambda$ controls the overall strength of the penalty.  
+
+\begin{align}
+min_{(\beta_0,\beta) \in R^{p+1}}-[\frac{1}{N} \Sigma_{i=1}^{N}y_i (\beta_0+x_i^T\beta)-log(1+e^{(\beta_0+x_i^T\beta)})]+\lambda[(1-\alpha)\left \| \beta \right \|_2^2/2+\alpha\left \| \beta \right \|_1]
+\end{align}
+
+
+## 3.3 Support Vector Machine with Gaussian Kernel
+  
+Formula 3 is SVM with kernel. The kernel is a function to transform features from the Euclidean space to Hilbert Space. The Gaussian RBF kernel $k(x,y)=exp(-\frac{1}{2\sigma^2}\left \| x-y \right \|^2)$ is used in this part since Figure 1 shows it is a non-linear SVM.  
+
+Dual problem:
+\begin{align}
+maxL_D(\alpha_i)=\Sigma_{i}\alpha_i-\frac{1}{2} \Sigma_{i,j}\alpha_i\alpha_jy_iy_jK(x_i,x_j)  
+s.t. \Sigma_{i}\alpha_iy_i=0, 0\leq \alpha_i \leq C
+\end{align}
+  
+![Vintage and AP](D:/data/semester3/5665/5665-project/Response-seperate.jpeg){width=40% height=200}
+
+## 3.4 K-fold Cross-Validation  
+
+Cross-validation is a resampling procedure used to evaluate machine learning models on a limited data sample. The procedure has a single parameter called k that refers to the number of groups that a given data sample is to be split into. The k-fold cross-validation method evaluates the model performance on a different subset of the training data and then calculates the average prediction score. Here, this method is used to find the optimized penalized parameters by picking the penalized parameters who has the highest AUC performance.  
+
+# Section 4. Method Implement and Model Analysis  
+
+## 4.1 Logistirc Regression with Downsampling Method 
+After downsampling the dataset, a new dataset with the same number of two different levels is generated. At the same time choose two types of regularization terms L1 norm and L2 norm, 5-fold cross-validation, and grid search from the interval (0, 0.001) to find the optimized penalty parameters. The coefficients of the model are in Table 2.  It gives information indicating that age, year, and policy sales channel are negatively correlated with Response. By keeping all other predictors in same level, when Age increases by 1, the odds of Response occurrence increases by $exp (-2.70*10^{-2}) = 0.9733612$ times.  
+
+Table 3 shows the optimized parameter and model performance. Logistic regression model with regularization uses downsampling technique has an AUC of 0.8434906. The importance of the variables in Table 4 shows that the top three important variables in the model are: previous insured with the answer 'Yes', policy sale channel with the level of 160, and vehicle damage with the answer 'Yes'.  
+
+
+  
+```{r,echo=FALSE}
+setwd('D:/data/semester3/5665/5665-project')
+coef_down_glm <- read.csv('coef_down_glm.csv',header=T,fileEncoding="UTF-8-BOM")
+knitr::kable(coef_down_glm,caption ='Coefficient of DownSampled Logistic Regression Model')
+```
+  
+  
+```{r,echo=FALSE}
+perf_down_glm <- read.csv('perf_down_glm.csv',header=T,fileEncoding="UTF-8-BOM")
+knitr::kable(perf_down_glm,caption ='Performance of DownSampled Logistic Regression Model')
+``` 
+  
+\newpage
+```{r,echo=FALSE}
+vi_down_glm <- read.csv('vi_down_glm.csv',header=T,fileEncoding="UTF-8-BOM")
+knitr::kable(vi_down_glm,caption ='Variable Importance of DownSampled  Logistic Regression Model')
+``` 
+
+
+## 4.2 Logistirc Regression with Weighted Loss Function  
+Formula 4 is to calculate the new weights for the minority class and the majority class of 'Yes' and 'No'. With default weights, the classifier here will assume that both kinds of label errors have the same cost. But for this unbalanced dataset, the wrong prediction of the minority is worse than the wrong prediction of the majority class. Use the entire dataset to construct a logistic regression model with regularization, along with weighted loss function, a grid search is performed on the interval (0,0.001), and it is found that the optimized penalized parameter lambda is 0.0003232323 when the L1 norm regularization is selected. The coefficients of this model are in Table 5. Table 6 shows the optimized parameter and model performance. It has an AUC as 0.8447601. The importance of variables in Table 7 shows the important variables in the model are basically the same as the down-sampled logistic regression model.  
+
+
+\begin{align}
+weights=\left\{\begin{matrix}
+\frac{1} {\textrm{number of majority class}}*0.5 \textrm{   for majority class}\\ \frac{1}{\textrm{number of minority class}}*0.5 \textrm{   for minority class}
+\end{matrix}\right.
+\end{align}  
+
+
+  
+```{r,echo=FALSE}
+setwd('D:/data/semester3/5665/5665-project')
+coef_wei_glm <- read.csv('coef_wei_glm.csv',header=T,fileEncoding="UTF-8-BOM")
+knitr::kable(coef_wei_glm,caption ='Coefficient of Weighted Loss Logistic Regression Model')
+```
+
+```{r,echo=FALSE}
+perf_wei_glm <- read.csv('perf_wei_glm.csv',header=T,fileEncoding="UTF-8-BOM")
+knitr::kable(perf_wei_glm,caption ='Performance of Weighted Loss Logistic Regression Model')
+``` 
+  
+```{r,echo=FALSE}
+vi_wei_glm <- read.csv('vi_wei_glm.csv',header=T,fileEncoding="UTF-8-BOM")
+knitr::kable(vi_wei_glm,caption ='Variable Importance of Weighted Loss Logistic Regression Model')
+``` 
+
+
+## 4.3 Support Vector Machine with Downsampling Method  
+For a large datasets, SVM runs slower than the logistic regression. To deal with the time complexity, 1% down-sampled data is selected to find the penalized parameters C and sigma. From the interval C = 2 ^ (-5:10), sigma = 2 ^ (-10: 3), a grid search is performed to find the optimized penalty parameter that makes the AUC the highest. As a result C=1 and sigma=0.001953125, the AUC is the highest, which is 0.7739307. After a train-test split with 0.7:0.3 in the downsampled dataset, the AUC of the test set is equal to 0.632.   
+
+## 4.4 Support Vector Machine with Weighted Loss Function  
+A train-test split at a ratio of 0.7:0.3 in 20% of the entire dataset, and use the previous results C=1 and sigma=0.001953125 to construct a model with a weighted loss function. Prediction on the test set gives an AUC equaling to 0.620. Figure 2 is the ROC curve.  
+
+![SVM ROC curve](D:/data/semester3/5665/5665-project/auc.jpeg){width=60% height=200}
+  
+
+  
+# Section 5. Model Evaulation and Concluding Remarks  
+  
+
+Two models are used, namely logistic regression with regularization and SVM, along with two different methods (downsampling and weighted loss function) for processing imbalanced dataset. To evaluate the model properly, AUC is adopted. The implicit goal of AUC is to deal with the highly skewed distribution of the dataset, and not to overfit a single class.  
+
+Table 8 summarizes these four combinations. Logistic regression with weighted loss function has the highest AUC of 0.8448. Moreover, the performances of the two SVMs are not as good as the logistic regression model. Considering the time required to construct the model, it is concluded that SVM is not an optimal model for large sample size data.
+
+```{r,echo=FALSE}
+#setwd('D:/data/semester3/5665/5665-project')
+definition <- read.csv('summary_auc.csv',header=T,fileEncoding="UTF-8-BOM")
+knitr::kable(definition,caption ='AUC Summary')
+```
+  
+In the future data preprocessing process, one option is to eliminate outliers. In a logistic regression model with regularization, it is difficult to perform a goodness-of-fit test using the current package. However, some papers are discussing these tests. Interaction terms and quadratic terms or higher-order terms may be considered in the model. In addition, CART model may be a better choice for large sample size data.
+
+# Appendix
+## A.1. References  
+1. Chao-Ying Joanne Peng, Kuk Lida Lee Gary M. Ingersoll (2002). An Introduction to Logistic Regression Analysis and Reporting Article. The Journal of Educational Research. September 2002 (3-14)
+2. Roger Koenker, Jungmo Yoon. Parametric Links for Binary Choice Models: A Fisherian-Bayesian Colloquy. http://www.econ.uiuc.edu/~roger/research/links/links.pdf
+3. Yihui Xie, Christophe Dervieux, Emily Riederer. R Markdown Cookbook
+4. R. Berwick. An Idiot’s guide to Support vector machines (SVMs). https://web.mit.edu/6.034/wwwbob/svm.pdf
+5. Trevor Hastie, Junyang Qian. An Introduction to glmnet. https://cloud.r-project.org/web/packages/glmnet/vignettes/glmnet.pdf
+
+## A.2. Variable Definitions  
+
+```{r,echo=FALSE}
+#setwd('D:/data/semester3/5665/5665-project')
+definition <- read.csv('definition.csv',header=F,fileEncoding="UTF-8-BOM")
+names(definition)=c('Variables','Definition')
+knitr::kable(definition,caption ='Variable Definition')
+```
+
+
+## A.3. Basic Summary Statistics  
+
+In addition to summary tables, graphical methods can also be done very well, which can display data more intuitively. Select some variables for analysis. Figure 3 summarizes these variables. Due to limitation of picture size, variables 'PSC' and 'RC' are not included. Most importantly, the response variable is highly unbalanced. Therefore, for an unbalanced datasets, necessary data processing should be considered. The variable 'Age' is skewed to the right. The 'Vintage' boxplot does not show any outliers. Annual Premium seems to has some outliers.
+  
+![Summary of Variables](D:/data/semester3/5665/5665-project/plot_zoom1.png){width=80% height=600}  
+ 
+  
+## A.4 Different Parameter Combination of SVM
+For the SVM model, there are two parameters, C (Cost) and sigma. For the combination of two parameters and intervals separetely, a grid search is performed. The two optimized hyperplane parameters with the highest AUC are selected. Figure 4 shows the hyperplane parameters combination and its performance.  
+  
+![Different Parameter Combination SVM](D:/data/semester3/5665/5665-project/plot_zoom.png){width=60% height=600}  
+
+
+

@@ -1,0 +1,8 @@
+edu	mon	sex	age	mar	race	manner
+4	1	M	36	M	1	N
+4	1	F	63	M	1	N
+3	1	F	97	W	1	N
+3	1	M	76	M	1	N
+4	1	M	64	M	1	N
+8	1	M	74	M	1	N
+
