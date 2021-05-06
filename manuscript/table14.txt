@@ -1,0 +1,8 @@
+edu	mon	sex	age_dt	age_d	mar	week	manner	place	ICD	race
+4	1	M	1	36	M	6	7	NA	E141	1
+4	1	F	1	63	M	5	7	NA	C55	1
+3	1	F	1	97	W	5	7	NA	I698	1
+3	1	M	1	76	M	5	7	NA	C80	1
+4	1	M	1	64	M	7	7	NA	I633	1
+8	1	M	1	74	M	5	7	NA	C250	1
+

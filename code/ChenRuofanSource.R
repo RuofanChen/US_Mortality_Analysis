@@ -1,14 +1,13 @@
-# library('kernlab')
-# library(tibble)
-# library(tidyverse)
-# library(DMwR)
+# created by Ruofan Chen 
+# US Mortality 2019
+# Last modified date: May 02,2021
 
 
 # load data --------------------------------------------------------------------
 # load packages
 library(sqldf) # required for read data
 
-fixed   <- file("../data/VS19MORT.DUSMCPUB_r20210304")
+fixed   <- file("../data/VS19MORT.DUSMCPUB")
 
 attr(fixed, "file.format") <- list(sep = ",", header = FALSE) 
 
@@ -221,7 +220,7 @@ sort(table(US2019_sui$week),decreasing = T) # similar for all day of week
 sort(table(US2019_ana_pre$week),decreasing = T) # similar for all day of week
 
 # ICD
-sort(table(US2019_sui$ICD),decreasing = T)
+sort(table(US2019_sui$ICD),decreasing = T)[1:10]
 
 
 # race
@@ -257,7 +256,10 @@ summary(down_data)
 
 # get design matrix and y (based on downsampled data)
 down_x <- model.matrix(manner~edu+mon+sex+age+mar+race, down_data)[,-1]
-down_y <- down_data$manner
+
+# design matrix with beta0 equal to 1
+down_xwith <- model.matrix(manner~edu+mon+sex+age+mar+race, down_data)
+down_y <- ifelse(down_data$manner=='Y',1,0)
 
 # find the best penalized parameter based on downsampled
 library(glmnet)
@@ -273,22 +275,32 @@ down_x_train <- down_x[down_train_ind, ]
 down_x_test <- down_x[-down_train_ind, ]
 down_y_train <- down_y[down_train_ind]
 down_y_test <- down_y[-down_train_ind]
+down_xwith_train <- down_xwith[down_train_ind, ]
+down_xwith_test <- down_xwith[-down_train_ind, ]
 
 
 # Fit the final model on the training data, based on downsample
-set.seed(123)
-down_glm_model <- glmnet(down_x_train, down_y_train, alpha = 1, family = "binomial",
-                             lambda = down_cv.lasso$lambda.min)
+#set.seed(123)
+#down_glm_model <- glmnet(down_x_train, down_y_train, alpha = 1, family = "binomial",
+#                             lambda = down_cv.lasso$lambda.min)
+#coef(down_glm_model)
 
-coef(down_glm_model)
+down_loss <- function(par){
+  return(sum( (-down_y_train * (down_xwith_train %*% par)  + log( 1+ exp((down_xwith_train %*% (par) )))))/nrow(down_xwith_train) + down_cv.lasso$lambda.min * sum(abs(par[-1])))
+}
+beta_down <- optim(par = rep(0,ncol(down_xwith_train)), fn=down_loss,method='BFGS',control=(maxit = 1e+05),hessian=T)
+beta_down$par
 
-# goodness of fit test
-library(broom)
-glance(down_glm_model)
-tidy(down_glm_model)
+
+# significant test:
+beta_down_fisher <- solve(beta_down$hessian)
+prop_sigma <- sqrt(diag(beta_down_fisher)/nrow(down_xwith_train))
+upper <- beta_down$par+1.96*prop_sigma
+lower <- beta_down$par-1.96*prop_sigma
+sign(upper) - sign(lower)
 
 # Make predictions on the test data
-down_pred <- predict(down_glm_model, newx = down_x_test, type = 'response')
+down_pred <- exp(down_xwith_test %*% beta_down$par)/(1+exp(down_xwith_test %*% beta_down$par))
 library(pROC)
 down_g <- roc(down_y_test ~ down_pred, print.auc=T,algorithm=2)
 as.numeric(down_g$auc)
@@ -357,35 +369,56 @@ ggroc(list('+mon' = down_g1, '+mon+race' = down_g2,
 
 # get design matrix and y (based on original data, use weighted loss)
 x <- model.matrix(manner~edu+mon+sex+age+mar+race, data)[,-1]
-y <- data$manner
-
-# Create model weights (they sum to one)
-model_weights <- ifelse(data$response==0,table(data$response)[2]/nrow(data),table(data$response)[1]/nrow(data))
-
-set.seed(123)
-cv.lasso <- cv.glmnet(x, y, alpha = 1, family = "binomial",nfolds=5,weights = model_weights
-                      ,type.measure = 'auc')
+# design matrix with beta0 1
+xwith <- model.matrix(manner~edu+mon+sex+age+mar+race, data)
+y <- ifelse(data$manner=='Y',1,0)
 
 smp_size <- floor(0.8 * nrow(x))
 set.seed(123)
 train_ind <- sample(seq_len(nrow(x)), size = smp_size)
 x_train <- x[train_ind, ]
 x_test <- x[-train_ind, ]
+xwith_train <- xwith[train_ind, ]
+xwith_test <- xwith[-train_ind, ]
 y_train <- y[train_ind]
 y_test <- y[-train_ind]
 
-# Fit the final model on the training data
-set.seed(123)
-weighted_glm_model <- glmnet(x_train, y_train, alpha = 1, family = "binomial",
-                             lambda = cv.lasso$lambda.min,weights = model_weights[train_ind])
+# Create model weights (they sum to one)
+model_weights <- ifelse(y_train==0,table(y_train)[2]/nrow(x_train),table(y_train)[1]/nrow(x_train))
+scale_weights <- model_weights * nrow(x_train) / sum(model_weights)
 
-coef(weighted_glm_model)
+set.seed(123)
+cv.lasso <- cv.glmnet(x_train, y_train, alpha = 1, family = "binomial",nfolds=5,weights = scale_weights
+                      ,type.measure = 'auc')
+
+
+# Fit the final model on the training data
+#set.seed(123)
+#weighted_glm_model <- glmnet(x_train, y_train, alpha = 1, family = "binomial",
+#                             lambda = cv.lasso$lambda.min,weights = model_weights[train_ind])
+#coef(weighted_glm_model)
+
+weight_loss <- function(par){
+  return(sum( (-y_train * (xwith_train %*% par)  + log( 1+ exp((xwith_train %*% (par) )))) * scale_weights )/nrow(xwith_train) + cv.lasso$lambda.min * sum(abs(par[-1])))
+}
+beta_weight <- optim(par = rep(0,ncol(xwith_train)), fn=weight_loss,method='BFGS',control=(maxit = 1e+05),hessian=T)
+beta_weight$par
+
+
+# significant test:
+beta_weight_fisher <- solve(beta_weight$hessian)
+prop_sigma <- sqrt(diag(beta_weight_fisher)/nrow(xwith_train))
+upper <- beta_weight$par+1.96*prop_sigma
+lower <- beta_weight$par-1.96*prop_sigma
+sign(upper) - sign(lower)
 
 # Make predictions on the test data
-pred <- predict(weighted_glm_model, newx = x_test, type = 'response')
-g <- roc(y_test ~ pred, print.auc=T,algorithm=2)
+weight_pred <- exp(xwith_test %*% beta_weight$par)/(1+exp(xwith_test %*% beta_weight$par))
+library(pROC)
+g <- roc(y_test ~ weight_pred, print.auc=T,algorithm=2)
 as.numeric(g$auc)
 plot(g,print.thres=TRUE)
+
 
 # Stage-wise feature adding: mon, race, sex, edu, mar, age, 
 #1
@@ -436,5 +469,70 @@ ggroc(list('+mon' = g1, '+mon+race' = g2,
 
 
 # end of logistic regression ---------------------------------------------------
+
+# Start of transfer learning ---------------------------------------------------
+
+x_with <- model.matrix(manner~edu+mon+sex+age+mar+race, down_data)
+y <- ifelse(down_data$manner=='Y',1,0)
+x <- model.matrix(manner~edu+mon+sex+age+mar+race, down_data)[,-1]
+
+# split the sample into two with same number observations
+smp_size <- floor(0.5 * nrow(down_data))
+set.seed(123)
+select_ind <- sample(seq_len(nrow(down_data)), size = smp_size,replace = FALSE)
+x_with1 <- x_with[select_ind, ]
+x_with2 <- x_with[-select_ind, ]
+x_1 <- x[select_ind, ]
+x_2 <- x[-select_ind, ]
+y_1 <- y[select_ind]
+y_2 <- y[-select_ind]
+
+# Determine the appropriate lambda:
+cv.lasso <- cv.glmnet(x, y, alpha = 1, family = "binomial",nfolds=5
+                      ,type.measure = 'auc')
+lambda_1 = cv.lasso$lambda.min
+cv.lasso <- cv.glmnet(x_1, y_1, alpha = 1, family = "binomial",nfolds=5
+                      ,type.measure = 'auc')
+lambda_2 = cv.lasso$lambda.min
+
+# calculate beta trans
+
+trans_glm <- function(x_target,y_target,x_aux,y_aux,lambda_w,lambda_delta){
+  if (ncol(x_target)!=ncol(x_aux)){
+    print("Two numbers of features don't match!")
+    break
+  }
+  # Step 1: 
+  x_comb = rbind(x_target,x_aux)
+  y_comb = c(y_target,y_aux)
+  inner_loss1 <- function(par){
+    return(sum( (-y_comb * (x_comb %*% par)  + log( 1+ exp((x_comb %*% par)))))/nrow(x_comb) + lambda_w * sum(abs(par[-1])))
+  }
+  w_hat <- optim(par = rep(0,ncol(x_comb)), fn=inner_loss1,method='BFGS')$par
+  print(w_hat)
+  # Step 2:
+  inner_loss2 <- function(par){
+    return(sum( (-y_target * (x_target %*% par)  + log( 1+ exp((x_target %*% (w_hat+par) )))))/nrow(x_target) + lambda_delta * sum(abs(par[-1])))
+  }
+  delta_hat <- optim(par = rep(0,ncol(x_target)), fn=inner_loss2,method='BFGS')$par
+  print(delta_hat)
+  return(w_hat+delta_hat)
+}
+
+beta_trans <-trans_glm(x_with1,y_1,x_with2,y_2,lambda_1,lambda_2)
+
+# calculate beta part
+
+inner_loss_part <- function(par){
+  return(sum( -y_1 * (x_with1 %*% par)  + log( 1+ exp((x_with1 %*% par))))/nrow(x_with1) + lambda_2 * sum(abs(par[-1])))
+}
+
+beta_part <- optim(par = rep(0,ncol(x_with1)), fn=inner_loss_part,method='BFGS')$par
+
+# Model comparison:
+
+sum((beta_trans - beta_down$par)^2)
+sum((beta_part - beta_down$par)^2)
+
 
 

@@ -1,8 +1,9 @@
 ---
-title: "US Suicide predection"
+title: "US Suicide Risk Screening"
 author: "Ruofan Chen"
 output: pdf_document
 toc: true
+date: "`r Sys.Date()`"
 ---
 
 ```{r setup, include=FALSE}
@@ -12,47 +13,43 @@ knitr::opts_chunk$set(comment = NA)
 
 \newpage
 # Abstract
-In 2019, suicide is the 10th leading cause of death in the US. This project uses Mortality Multiple Cause Files by CDC, conducting a research in suicide risk screening based on 2019 demographic data related to the death. On the first stage, a descriptive analysis is carried out, distribution curve plot, barplot and other useful visualization tools are used. To realize the analysis, a logistic regression is established with other covariates (e.g. education status, gender, age, marital,race and etc.). After clarifying that the distribution of respond variable is unbalanced, two methods are utilized in the model, including downsampling technique and weighted loss function. To have a more insightful conclusion with simplest form, the sparsity
-is encouraged by adding a lasso penalty. To find the optimal penalized parameters, a 5-fold cross-validation grid search is performed on specific intervals. Finally, the weighted logistic regression model with the highest area under the ROC curve (AUC) as 0.873 is selected as the best model. On the second stage, an external data from Kansas Health Information Network (KHIN) (after the data desensitization) is involved. T. Tony Cai et.al (2020) proposed a scheme for linear transfer learning that utilize the source data set to improve the performance of estimator on the target data set. In this project, we explore the way to extend the proposed scheme to the case of general linear model.
+In 2019, suicide is the 10th leading cause of death in the US. This project uses Mortality Multiple Cause Files by CDC, conducting research in suicide risk screening based on 2019 demographic data related to the death. In the first stage, a descriptive analysis is carried out, distribution curve plot and tables are generated. To realize the analysis, logistic regression is established with other covariates (education status, gender, month, age, marital status, and race). After clarifying that the distribution of the response (manner of death is suicide) is unbalanced, two methods are utilized in the model, including down-sampling technique and weighted loss function. To have a more insightful conclusion with the simplest form, the sparsity is encouraged by adding a lasso penalty. To find the optimal penalized parameters, a 5-fold cross-validation grid search is performed on specific intervals. Finally, both down-sampled and weighted logistic regression models can attain the area under the ROC curve (AUC) greater than 0.87 and the corresponding confidence intervals of parameters are obtained via the Fisher information approach. Due to the large sample size, down-sampling is appropriate when considering computer calculation time, with an AUC of 0.870063. In the second stage, a framework for transfer learning of logistic regression is built up and is verified to be useful if the "informative" external data is accessible. 
 
 
-    
-  
-
-**Key Words**: GLM, logistic regression, regularization, weighted loss function, area under ROC curve (AUC)
+**Key Words**: GLM, logistic regression, regularization, down-sampling method, weighted loss, area under ROC curve (AUC), transfer learning
 
 
 # Section 1. Introduction
 
-Suicide is defined as death caused by self-directed injurious behavior with intent to die as a result of the behavior. According to National Vital Statistics System - Mortality Data (2019) via CDC WONDER, suicide in 2019 was the tenth leading cause of death in the United States as a whole, with 47,511 deaths. There are 14.5 suicides per 100,000 deaths. More notably, it is estimated that there were 1.38 million suicide attempts in 2019. Studies have found that people who have attempted suicide in the past have a higher risk of suicide in the future.  
+Suicide is defined as death caused by self-directed injurious behavior with intent to die as a result of the behavior. According to National Vital Statistics System - Mortality Data (2019) via CDC WONDER, suicide in 2019 was the tenth leading cause of death in the United States. More notably, it is estimated that there were 1.38 million suicide attempts in 2019. Studies have found that people who have attempted suicide in the past have a higher risk of suicide in the future.  
 
-The project uses the public data set "Multiple Causes of Mortality File" provided by the CDC, which contains records of mortality events and their corresponding information, to screen for suicide risk based on demographic information and other information.  
+The project uses the public data set 'Mortality Multiple Cause Files' provided by the CDC, which contains records of mortality events and their corresponding information, to screen for suicide risk based on demographic information and other information.  
 
-After clarifying the unbalanced distribution of the response variables, two methods were used in the logistic regression model with regularization, including the down-sampling technique and weighted loss function. The data preprocessing process includes selecting variables related to the response, deleting observations with missing or undeclared values, and converting some categorical variables.  
+After clarifying the unbalanced distribution of the response variables, two methods were used in the logistic regression model with regularization, including the down-sampling technique and weighted loss function. The data preprocessing process includes selecting variables related to the response (suicide occurs), deleting observations with missing or undeclared values, and converting some categorical variables.  
   
-In the following sections of the report, the characteristics of the data set, the development process of the model, and the related final results will be discussed. Section two contains data descriptions and generates related tables and graphs. The third section 'Models and Methods' shows the model, explains the influence of each covariate on the odds ratio of the suicide risk and discusses its performance. The summary and conclusions illustrate the final results and some comments on the model. The appendix contains definitions of variables, graphs, and model supplements related to the models.
+In the following sections of the report, the characteristics of the data set, the development process of the model, and the related final results will be discussed. Section two contains data descriptions and generates related tables and graphs. The third section 'Models and Methods' shows down-sampling method, logistic regression model, significance test for the estimation, K-fold Cross-Validation, and transfer learning. Section four explains the influence of covariates on the odds ratio of the suicide risk and discusses its performance, and validation for transfer learning. Section four and five illustrate the final results and release some comments on the model. The appendix contains definitions of variables, graphs, and model supplements related to the models.
    
   
 # Section 2. Data Description
 
-The data set is the 2019 data extracted from the CDC's "Mortality Multiple Cause Files", please refer to <https://www.cdc.gov/nchs/data_access/vitalstatsonline.htm#Mortality_Multiple>. There are a total of 2,861,523 observations, and 10 death-related information is selected as relevant variables, including Education(2003 version), Month, Sex, Age Detailed, Marital Status, Day of Week, Manner of Death, Place of Injury, ICD Code(Version 10), and Bridged Race Recode 5. For this study, the variable 'Manner of Death' is set as the dependent variable. Before deciding which variables to set as predictors, the data must be checked and described.    
+The data set is the 2019 data extracted from the CDC's 'Mortality Multiple Cause Files', please refer to <https://www.cdc.gov/nchs/data_access/vitalstatsonline.htm#Mortality_Multiple>. There are a total of 2,861,523 observations, and 10 death-related information is selected as relevant variables, including Education (2003 version), Month, Sex, Age Detailed, Marital Status, Day of Week, Manner of Death, Place of Injury, ICD Code (Version 10), and Bridged Race Recode 5. For this study, the variable 'Manner of Death' is set as the dependent variable. Before deciding which variables to set as predictors, the data must be examined and described.    
   
 To prepare for analysis, delete observations, including unstated values, unspecified values, unknown values, or blank values that are not applicable to variables, but keep the Place of Injury and Day of Week as they are prepared for descriptive analysis. Second, adjust the data type of the variable according to its definition, and set all variables except 'Age Detailed' as factors. Then calculate the age in years. Another transformation of the dependent variable is to divide the response into two categories: suicide and non-suicide, labeled 'Y' and 'N' respectively. After applying these preprocessing, there are 2,517,393 observations.
   
 
-The descriptive analysis is based on suicide cases, including all read variables. Observations with missing or unspecified values will be eliminated.
+The descriptive analysis is based on suicide cases, including all the variables that have been read. Observations with missing or unspecified values will be eliminated.
 
 Suicide most often occurs in the 55-60 age group, and suicides are mainly concentrated in the 20-65 age group. The number of suicides from 0 to 20 years old rises rapidly, then begins to fluctuate and peaks at 55-60 years old, and then the number of suicides decreases with age. The total number of deaths shows a clear left-skewed distribution. The frequency of deaths increases with age from 0 to 90 years old, reaching a peak in the 85-90 year-old age group, and the number of deaths decreases after 90 years of age. Figure 1 shows the age distribution. 
 
 ![Age Distribution](C:/Users/Ruofan Chen/Desktop/R_SAS/2-final/STAT5225_final_mortality/manuscript/age_distribution.png){width=50% height=300}
 
-Descriptive analysis is carried out from two aspects: comparing suicide cases with all causes of death, and the distribution of variables in suicide cases. After checking all relevant variables, most suicides occurred at home, accounting for 73.19% of all suicides, and deaths of all causes were consistent with this. Most suicide cases are high school graduates or who have completed GED, or obtained some college credits but no degree. They often occur in July, August, and September, which is different from the overall deaths that occur in December, January, and March. The proportion of male suicides is much higher than that of females, accounting for 78.5%, and the proportion of single persons is slightly higher than that of married persons. The suicide death toll of the days of the week is similar and does not seem to have any relationship with the overall death toll. The top three ICD codes are X74, X70, X72, which respectively represent intentional self-harm by other and unspecified firearm and gun discharge, intentional self-harm by hanging, strangulation and suffocation, intentional self-harm by handgun discharge respectively. White people account for the largest proportion, which is similar to the overall death proportion.  
+Descriptive analysis is carried out from two aspects: comparing suicide cases with all causes of death, and the distribution of variables in suicide cases. After checking all relevant variables, most suicides occurred at home, accounting for 73.19% of all suicides, and deaths of all causes were consistent with this. Most suicide cases are high school graduates or who have completed GED, or obtained some college credits but no degree. They often occur in July, August, and September, which is different from the overall deaths that occur in December, January, and March. The proportion of male suicides is much higher than that of females, accounting for 78.5%, and the proportion of single persons is slightly higher than that of married persons. The suicide death toll of the days of the week is similar and does not seem to have any relationship with the overall death toll. The top three ICD codes are X74, X70, X72, which respectively represent intentional self-harm by other and unspecified firearm and gun discharge, intentional self-harm by hanging, strangulation and suffocation, intentional self-harm by handgun discharge respectively. White people account for the largest proportion, which is similar to the overall death proportion. Tables 1 to 3 are summary tables of age, frequency table of marital status, and frequency table of sex respectively. For other related tables please refer to Appendix A.2 Data Description Supplement.
 
 |Age            |Min.   |1st Qu.|Median|Mean |3rd Qu.| Max.|
 |:--------------|-----: |---:  |----: |---:  |-----: |----:|
 |Suicide        |8.0    |31.0  |47.0  |47.1  |61.0   |103.0|
 |Overall        |0.0    |64.0  |76.0  |73.2  |87.0   |115.0|  
-Table: Frequency Table of Age
+Table: Summary Table of Age
 
 |Marital Status |Value |D     |M     |S     |W     |
 |:--------------|-----:|---:  |----: |---:  |--:   |
@@ -66,13 +63,13 @@ Table: Frequency Table of Marital Status
 |Overall  |Number|1299580|1217813|  
 Table: Frequency Table of Sex  
 
-After checking all the variables, Education(2003 version), Month, Sex, Age Detailed, Marital Status, Day of Week, and Bridged Race Recode 5 are selected as predictors in the next section--modeling part.
+After checking all the variables, Education (2003 version), Month, Sex, Age Detailed, Marital Status, Day of Week, and Bridged Race Recode 5 are selected as predictors in the next section--modeling part.
 
-Table 4 shows the first six rows of the data set used for modeling. For the definition of values of variables, please refer to Appendix A.2.
+Table 4 shows the first six rows of the data set used for modeling. For the definition of variable values, please refer to Appendix A.1.
 
 ```{r, echo=FALSE}
-table1 <- read.table('table1.txt',header = T)
-knitr::kable(table1,col.names = gsub("[.]", " ", names(table1)),align = "lccrr", caption ='First Six Observations')
+table4 <- read.table('table4.txt',header = T)
+knitr::kable(table4,col.names = gsub("[.]", " ", names(table4)),align = "lccrr", caption ='First Six Observations')
 ```
   
 
@@ -81,27 +78,32 @@ knitr::kable(table1,col.names = gsub("[.]", " ", names(table1)),align = "lccrr",
 
 ## 3.1 Downsampling Method
 
-DownSample will randomly sample a data set so that the frequency of the majority class is same with the frequency of the minority class. Due to the large sample size, down-sampling is appropriate when considering computer calculation time.
+Down-Sampling method will randomly sample a data set so that the frequency of the majority class is the same as the frequency of the minority class. Due to the large sample size, down-sampling is appropriate when considering computer calculation time.
 
 ## 3.2 Logistic Regression with Regularization  
 
-Formula 1 is the logistic regression model. Here, 'Manner of Death' is set as the response variable, which is labeled Y, and follows the Bernoulli distribution with parameter p. In addition, each observation is independent. The notation p is a binomial parameter representing the probability of occurrence of the 'Response'.  
+Formula 1 and 2 are the logistic regression model. Here, 'Manner of Death' is set as the response variable, which is labeled Y, and follows the Bernoulli distribution with parameter p. In addition, each observation is independent. The notation p is a binomial parameter representing the probability of occurrence of the Suicide(Manner of Death equals to 'Y').  
 
 The hypothesis is probability p follows a logistic distribution. $\beta_0$ represents the intercept, $\beta_j$ (j from 1 to 6) represents the partial coefficient of increasing 1 unit on $X_j$ while holding all other predictors fixed, the change of log odds.  
+
+\begin{align}  
+P\left( {y\left| x \right.} \right) = \frac{{\exp \left( {{x^T}\beta y} \right)}}{{1 + \exp \left( {{x^T}\beta y} \right)}}
+\end{align}
 
 \begin{align}
 logit(p_i)=log(\frac{p_i}{1-p_i})=x_i'\beta=\beta_0+\beta_1X_{edu}+\beta_2X_{mon}+\beta_3X_{sex}+\beta_4X_{age}+\beta_5X_{mar}+\beta_{6}X_{race}
 \end{align}  
 
-The objective function for the logistic regression with L1 penalty lasso uses the negative binomial log-likelihood and is shown in Formula 2. The tuning parameter $\lambda$ controls the overall strength of the penalty.  
+The objective function for the weighted logistic regression with L1 penalty lasso uses the negative binomial log-likelihood and is shown in Formula 3. The tuning parameter $\lambda$ controls the overall strength of the penalty.  
 
-\begin{align}
-min_{(\beta_0,\beta) \in R^{p+1}}-[\frac{1}{N} \Sigma_{i=1}^{N}y_i (\beta_0+x_i^T\beta)-log(1+e^{(\beta_0+x_i^T\beta)})]+\lambda \left \| \beta \right \|_1
-\end{align}
+\begin{align} 
+\hat \beta  \in \mathop {\arg \min }\limits_\beta  \frac{1}{n}\sum\limits_{i = 1}^n \frac{1}{w_i}{\log \left( {1 + \exp \left( { - {x_i}^T\beta {y_i}} \right)} \right)}  + \lambda {\left\| \beta  \right\|_1}  
+\end{align}  
 
-## 3.3 Significance test for the estimation (Confidence Interval)
 
-Taking the second order derivative of minus of loss function (i.e. the likelihood function), we can obtain the Hessian matrix:
+## 3.3 Significance Test for the Estimation (Confidence Interval)
+
+Taking the second-order derivative of minus of loss function (i.e. the likelihood function), Hessian matrix can be obtained:
 
 $$
 H{\left( {\tilde \beta } \right)_{jk}} = \frac{{\partial l\left( {\tilde \beta } \right)}}{{\partial {{\tilde \beta }_j}{{\tilde \beta }_k}}} =  - \sum\limits_{i = 1}^n {{\mu _i}\left( {1 - {\mu _i}} \right){x_{ij}}{x_{ik}}} 
@@ -121,7 +123,7 @@ With this observation, the estimation of standard error for $i-$th parameter ${\
 $$
 s.e.\left( {{{\tilde \beta }_i}} \right) = \sqrt {{{\left( {\hat I{{\left( {\tilde \beta } \right)}^{ - 1}}} \right)}_{i,i}}}. 
 $$
-Finally, the 95 percent confidence intervel of estimation of ${{{\tilde \beta }_i}}$ will be carried out according to the large sample normal setting as
+Finally, the 95 percent confidence interval of estimation of ${{{\tilde \beta }_i}}$ will be carried out according to the large sample normal setting as
 $$
 {{\hat \beta }_i} \pm 1.96s.e.\left( {{{\tilde \beta }_i}} \right).
 $$
@@ -129,30 +131,30 @@ $$
 
 ## 3.4 K-fold Cross-Validation  
 
-Cross-validation is a resampling procedure used to evaluate machine learning models on a limited data sample. The procedure has a single parameter called k that refers to the number of groups that a given data sample is to be split into. The k-fold cross-validation method evaluates the model performance on a different subset of the training data and then calculates the average prediction score. Here, this method is used to find the optimized penalized parameters by picking the penalized parameters who has the highest AUC performance.  
+Cross-validation is a resampling procedure used to evaluate machine learning models on a limited data sample. The procedure has a single parameter called k that refers to the number of groups that a given data sample is to be split into. The k-fold cross-validation method evaluates the model performance on a different subset of the training data and then calculates the average prediction score. Here, this method is used to find the optimized penalized parameters by picking the penalized parameters that have the highest AUC performance.  
 
-## 3.5 Transfer learning 
+## 3.5 Transfer Learning 
 
-There are more and more people agree with one statement: the transfer learning (TL) is the next frontier of the machine learning. The reason why transfer learning is so useful is based on a fact: more and more companies or governments realize the value of data, hence, they tends to create their private database. With the collaborations between them, a problem appears: how to take advantage of external data to improve the performance of local forecasting, whatever the regression or classification. Manifestly, stacking all the data together makes no sense, and can even generate ridiculous results as the distinction between the study cohorts for different companies. Therefore, a delicate design is needed for every different mission. For example, the speech recognition <!--\citep{kunze2017transfer}-->, robot training <!--\\citep{rusu2017sim}-->, brain image diagnosis <!--\\citep{zhou2019domain}--> and so many industrial field can benefit from TL.  
+There are more and more people who agree with one statement: transfer learning (TL) is the next frontier of machine learning. The reason why transfer learning is so useful is based on a fact: more and more companies or governments realize the value of data, hence, they tend to create their private database. With the collaborations between them, a problem appears: how to take advantage of external data to improve the performance of local forecasting, whatever the regression or classification. Manifestly, stacking all the data together makes no sense, and can even generate ridiculous results as the distinction between the study cohorts for different companies. Therefore, a delicate design is needed for every different mission. For example, speech recognition <!--\citep{kunze2017transfer}-->, robot training <!--\\citep{rusu2017sim}-->, brain image diagnosis <!--\\citep{zhou2019domain}--> and so many industrial fields can benefit from TL.  
 
 
-The classification is a very common mission in statistical projects, and the logistic regression is one of the most prevalent method among all the classification tools because it can give the prediction of probability. Formally, a logistic regression suggests a target model as
+Classification is a very common mission in statistical projects, and logistic regression is one of the most prevalent methods among all the classification tools because it can give the prediction of probability. Formally, a logistic regression suggests a target model as
 $$
 P\left( {y_i^{\left( 0 \right)} = 1} \right) = \frac{{\exp \left( {x_i^{\left( 0 \right)T}\beta } \right)}}{{1 + \exp \left( {x_i^{\left( 0 \right)T}\beta } \right)}},i = 1,2, \ldots ,{n_0}
 $$
-where $\left\{ {\left( {x_i^{\left( 0 \right)},y_i^{\left( 0 \right)}} \right)} \right\}$ are i.i.d samples and $\beta$ is the true parameter that we want to estimate. Meanwhile, we assume that other $K$ auxiliary logistic models are also in our interest, they can be described as
+where $\left\{ {\left( {x_i^{\left( 0 \right)},y_i^{\left( 0 \right)}} \right)} \right\}$ are i.i.d samples and $\beta$ is the true parameter to be estimated. Meanwhile, assuming that other $K$ auxiliary logistic models are also in our interest, they can be described as
 $$
 P\left( {y_i^{\left( k \right)} = 1} \right) = \frac{{\exp \left( {x_i^{\left( k \right)T}{w^{\left( k \right)}}} \right)}}{{1 + \exp \left( {x_i^{\left( k \right)T}{w^{\left( k \right)}}} \right)}},i = 1,2, \ldots ,{n_k};k = 1,2, \ldots K
 $$
-where ${{w^{\left( k \right)}}}$ plays same rules as $\beta$ in target model. However, just as we mentioned earlier, as the difference of study cohorts, every ${{w^{\left( k \right)}}}$ is assumed to be distinct with $\beta$. Therefore, we can describe this relation by ${\delta ^{\left( k \right)}} = \beta  - {w^{\left( k \right)}}$. Besides, $K$ is the total number of auxiliary models and datasets. With this decomposition of parameter, we can now define the "informative" datasets. By defining 
+where ${{w^{\left( k \right)}}}$ plays the same rules as $\beta$ in the target model. However, just as mentioned earlier, as the difference of study cohorts, every ${{w^{\left( k \right)}}}$ is assumed to be distinct from $\beta$. Therefore, this relation can be described by ${\delta ^{\left( k \right)}} = \beta  - {w^{\left( k \right)}}$. Besides, $K$ is the total number of auxiliary models and data set. With this decomposition of parameters, the "informative" data sets can be defined. By defining 
 $$
 \mathcal{A}\left( h \right) = \left\{ {1 \le k \le K:{{\left\| {{\delta ^{\left( k \right)}}} \right\|}_1} \le h} \right\},
 $$
-the purpose of this session is using $\left\{ {k \in A\left( h \right) \cup \left\{ 0 \right\}:\left( {x_i^{\left( k \right)},y_i^{\left( k \right)}} \right)} \right\}$ to give a better estimation of $\beta$ than only using the sample in target. 
+the purpose of this session is to use $\left\{ {k \in A\left( h \right) \cup \left\{ 0 \right\}:\left( {x_i^{\left( k \right)},y_i^{\left( k \right)}} \right)} \right\}$ to give a better estimation of $\beta$ than only using the sample in the target. 
 
-## 3.5.1 Trans-logistic regression Algorithm
+## 3.5.1 Trans-logistic Regression Algorithm
 
-Before we carry out the algorithm, the following lemma gives an alternative loss of logistic regression with the one in session 3.2.
+Before carrying out the algorithm, the following lemma gives an alternative loss of logistic regression with the one in session 3.2.
 
 ### Lemma (Alternative Loss) {.unlisted .unnumbered}
 
@@ -171,7 +173,7 @@ f\left( z \right) = \frac{{{e^z}}}{{1 + {e^z}}}\\
 \end{array}
 $$
 
-Hence, for the ordinary logistic regression, we have the following expression:
+Hence, for the ordinary logistic regression, the following expression can be written:
 
 $$
 \begin{array}{l}
@@ -183,7 +185,7 @@ where ${{\tilde x}_i} = {\left( {1,x_i^T} \right)^T}$ and $\tilde \beta  = {\lef
 $$
 \beta  \in \mathop {\arg \min }\limits_{\tilde \beta } E\left[ {\log \left( {1 + \exp \left( { - {y_i}\tilde. x_i^T\tilde \beta } \right)} \right)} \right]
 $$
-Also, we set the appropriate population-level score function and Hassian matrix as
+Also, the appropriate population-level score function and Hessian matrix are set as:
 $$
 \begin{array}{l}
 S\left( \beta  \right) = E\left[ { - \frac{{\exp \left( { - {y_i}\tilde x_i^T\tilde \beta } \right)}}{{1 + \exp \left( { - {y_i}\tilde x_i^T\tilde \beta } \right)}}{y_i}{{\tilde x}_i}} \right]\\
@@ -191,7 +193,7 @@ H\left( \beta  \right) = E\left[ {\frac{{\exp \left( { - {y_i}\tilde x_i^T\tilde
 \end{array}
 $$
 
-Now, we assume that except for the primary dataset $\left\{ {\tilde x_i^{\left( 0 \right)},y_i^{\left( 0 \right)}} \right\}_1^{{n_0}}$ there exists another auxiliary dataset $\left\{ {\tilde x_i^{\left( 1 \right)},y_i^{\left( 1 \right)}} \right\}_1^{{n_1}}$ such that $1 \in \mathcal{A}\left( h \right)$ for a given small $h$, the Trans-logistic regression suggests the following optimization procedure:
+Now, suppose that except for the primary data set $\left\{ {\tilde x_i^{\left( 0 \right)},y_i^{\left( 0 \right)}} \right\}_1^{{n_0}}$ there exists another auxiliary data set $\left\{ {\tilde x_i^{\left( 1 \right)},y_i^{\left( 1 \right)}} \right\}_1^{{n_1}}$ such that $1 \in \mathcal{A}\left( h \right)$ for a given small $h$, the Trans-logistic regression suggests the following optimization procedure:
 
 * Input: Primary $\left\{ {\tilde x_i^{\left( 0 \right)},y_i^{\left( 0 \right)}} \right\}_1^{{n_0}}$ and auxiliary $\left\{ {\tilde x_i^{\left( 1 \right)},y_i^{\left( 1 \right)}} \right\}_1^{{n_1}}$.
 * Result: ${{\hat \beta }_{oracle}}$.
@@ -205,21 +207,21 @@ $$
 $$
 * Output: ${{\hat \beta }_{oracle}} = {{\hat w}^A} + {{\hat \delta }^A}$.
 
-## 3.5.2 The statistical property of Trans-logistic regression
+## 3.5.2 The Statistical Property of Trans-logistic Regression
 
 ### Condition 1: $H\left( \beta  \right) = H\left( {{w^{\left( 1 \right)}}} \right)$. {.unlisted .unnumbered}
 
 
 ### Condition 2:{.unlisted .unnumbered}
-For all datasets, there exists a unique nonzero minimizer ${{\tilde \beta }^ * }$ such that $S\left( {{{\tilde \beta }^*}} \right) = 0$ and $c \le {\lambda _{\min }}\left( {H\left( {{{\tilde \beta }^*}} \right)} \right) \le {\lambda _{\max }}\left( {H\left( {{{\tilde \beta }^*}} \right)} \right) \le {c^{ - 1}}$ for some constant $c > 0$. 
+For all data sets, there exists a unique nonzero minimizer ${{\tilde \beta }^ * }$ such that $S\left( {{{\tilde \beta }^*}} \right) = 0$ and $c \le {\lambda _{\min }}\left( {H\left( {{{\tilde \beta }^*}} \right)} \right) \le {\lambda _{\max }}\left( {H\left( {{{\tilde \beta }^*}} \right)} \right) \le {c^{ - 1}}$ for some constants $c > 0$. 
 
 ### Condition 3:  {.unlisted .unnumbered}
-Unique minimizer ${{\tilde \beta }^*}$ for all datasets satisfies ${\left\| {{{\tilde \beta }^*}} \right\|_2} \le C$ for some constants $C > 0$.
+Unique minimizer ${{\tilde \beta }^*}$ for all data sets satisfies ${\left\| {{{\tilde \beta }^*}} \right\|_2} \le C$ for some constants $C > 0$.
 
-Then we can carry out the following theorem whose proof is in the Appendix.
+The following theorem can be implemented, the proof of which is in the Appendix.B.
 
 ### Theorem (Convergence rate for Trans-logistic regression) {.unlisted .unnumbered}
-Let $s$ be the number of support of $\beta$. Assume that Condition 1,2 and 3 hold true. If the following condition for $h$ holds true: $s\log p/\left( {{n_1} + {n_0}} \right) + h{\left( {\log p/{n_0}} \right)^{1/2}} = o\left( {{{\left( {\log p/{n_0}} \right)}^{1/4}}} \right)$, then we have
+Let $s$ be the number of support of $\beta$. Assume that Condition 1,2 and 3 hold true. If the following condition for $h$ holds true: $s\log p/\left( {{n_1} + {n_0}} \right) + h{\left( {\log p/{n_0}} \right)^{1/2}} = o\left( {{{\left( {\log p/{n_0}} \right)}^{1/4}}} \right)$, then 
 $$
 \begin{array}{l}
 \mathop {\sup }\limits_\beta  \max \left( {\frac{1}{{{n_0}}}{{\left( {{{\hat \beta }_{oracle}} - \beta } \right)}^T}H\left( \beta  \right)\left( {{{\hat \beta }_{oracle}} - \beta } \right),\left\| {{{\hat \beta }_{oracle}} - \beta } \right\|_2^2} \right)\\
@@ -227,28 +229,38 @@ $$
 \end{array}
 $$
 
-The proof of this theorem is in the Appendix.
+The proof of this theorem is in the Appendix.B.
 
 
 
-# Section 4. Method Implement and Model Analysis  
+# Section 4. Method Implementation and Model Analysis  
 
-## 4.1 Logistirc Regression with Downsampling Method 
-After downsampling the data set, a new data set with the same number of two different levels is generated. The down-sampled data set contains 93,484 observations, of which the two types of response variables each account for 46,742. Then L1 norm regularization with 5-fold cross-validation and grid search is carried out to find the optimized penalty parameter lambda is 0.001003872. The data used for regression is split for training and testing according to the ratio of 8:2. Logistic regression with lasso regularization is performed on the training set. The coefficients of the model are in column 'down_glm' of Table 5. By keeping all other predictors in same level, when age increases by 1, the odds of suicide death occurrence increases by $exp(-0.07466744) = 0.9280521$ times. Area under ROC curve (AUC) is a good way to validate the model performance. After using the obtained coefficients to make predictions on the test set, a AUC of 0.8711667 is obtained.
+## 4.1 Logistic Regression with Downsampling Method 
+After down-sampling the data set, a new data set with the same number of two different levels are generated. The down-sampled data set contains 93,484 observations, of which the two types of response variables each account for 46,742. Then L1 norm regularization with 5-fold cross-validation and grid search is carried out to find the optimized penalty parameter lambda is 0.001003872. The data used for regression is split for training and testing according to the ratio of 8:2. Logistic regression with lasso regularization is performed on the training set.   
+  
+The coefficients of the model are in column 'down_coef' of Table 5. By keeping all other predictors at the same level, when age increases by 1, the odds of suicide death occurrence increases by $exp(-0.074819) = 0.9279114$ times. 'd_lower' and 'd_upper' represent the lower bond and upper bond of the coefficient at the significance of 5%. If the 95% confidence interval includes 0, it can be concluded that this (level of) variable is not significant at 5% level. The column 'd_Sig' indicated the significance, 'TRUE' and 'FALSE' represent this (level of) variable is or is not significant at 5% level respectively. It can be concluded that 'edu2', variable month, 'race3' and 'race4' are not significant at 5% level. Area under ROC curve (AUC) is a good way to validate the model performance. After using the obtained coefficients to make predictions on the test set, an AUC of 0.870063 is obtained which is shown in Figure 2.
+  
+![all down sample](C:/Users/Ruofan Chen/Desktop/R_SAS/2-final/STAT5225_final_mortality/manuscript/all_down_glm.png){width=50% height=300}    
 
-Since most variables are of categorical type, in order to have a better understanding of the effect of variables on the results, a step-wise feature adding model was established. The variables are added in the following order: month, race, gender, education, marital status, age, each time the AUC of the model is calculated, Figure 2 is generated. It can be clearly seen from Figure 2 that sex, marital status, and age have a great influence on response.
+Since most variables are of categorical type, in order to have a better understanding of the effect of variables on the results, a step-wise feature adding model is established. The variables are added in the following order: month, race, gender, education, marital status, age, each time the AUC of the model is calculated, Figure 3 is generated. It can be clearly seen from Figure 3 that sex, marital status, and age have a great influence on the response.
+
+
 
 ![stepwise down sample](C:/Users/Ruofan Chen/Desktop/R_SAS/2-final/STAT5225_final_mortality/manuscript/stepwise_down_glm.png){width=50% height=300}
   
   
-## 4.2 Logistirc Regression with Weighted Loss Function  
-Formula 4 is to calculate the new weights for the minority class and the majority class of 'Y' and 'N'. With default weights, the classifier here will assume that both kinds of label errors have the same cost. But for this unbalanced data set, the wrong prediction of the minority is worse than the wrong prediction of the majority class. Use the entire data set to construct a logistic regression model with regularization, along with weighted loss function, a grid search is performed, and it is found that the optimized penalized parameter lambda is 0.001112035 when the L1 norm regularization is selected. The coefficients of this model are in Table 5. It has an AUC as 0.8731377. The step-wise feature adding figure in Figure 3 shows the important variables in the model are basically the same as the down-sampled logistic regression model.  
+## 4.2 Logistic Regression with Weighted Loss Function  
+Formula 4 is to calculate the new weights for the minority class and the majority class of 'Y' and 'N'. With default weights, the classifier here will assume that both kinds of label errors have the same cost. But for this unbalanced data set, the wrong prediction of the minority is worse than the wrong prediction of the majority class. Use the entire data set to construct a logistic regression model with regularization, along with weighted loss function, a grid search is performed, and it is found that the optimized penalized parameter lambda is 0.001014139 with L1 norm regularization.  
+  
+The coefficients of the model are in column 'weighted_coef' of Table 5. By keeping all other predictors at the same level, when age increases by 1, the odds of suicide death occurrence increases by $exp(-0.076467) = 0.9263835$ times. 'w_lower' and 'w_upper' represent the lower bond and upper bond of the coefficient at the significance of 5%. The column 'w_Sig' indicated the significance, 'TRUE' and 'FALSE' represent this (level of) variable is or is not significant at 5% level respectively. After using the obtained coefficients to make predictions on the test set, an AUC of 0.8721828 is obtained which is shown in Figure 4. The step-wise feature adding figure in Figure 5 shows the important variables in the model are basically the same as the down-sampled logistic regression model.  
 
 \begin{align}
 weights=\left\{\begin{matrix}
 \frac{\textrm{number of minority class}} {\textrm{number of all class}} \textrm{for majority class}\\ \frac{\textrm{number of majority class}}{\textrm{number of all class}} \textrm{for minority class}
 \end{matrix}\right.
 \end{align}  
+  
+![all weighted sample](C:/Users/Ruofan Chen/Desktop/R_SAS/2-final/STAT5225_final_mortality/manuscript/all_weighted_glm.png){width=50% height=300}  
 
 ![stepwise weighted loss](C:/Users/Ruofan Chen/Desktop/R_SAS/2-final/STAT5225_final_mortality/manuscript/stepwise_weighted_glm.png){width=50% height=300}
 
@@ -259,12 +271,14 @@ table5 <- read.table('table5.txt',header = T)
 knitr::kable(table5,col.names = gsub("[.]", " ", names(table5)),align = "lccrr", caption ='Coefficient and significance')
 ```
   
-
+  
+  
 ## 4.3 Validation for Transfer Learning
 
-In this session, I will verify the performance of transfer learning, i.e. proving that it indeed can take advantage of the externel data to improve the estimator, based on the down-sample data. Denote $D$ as the whole down-sample data. The ${\hat \beta _D}$ is the estimation of parameter that we got in the previous session according to this whole sample. Denote ${D_1},{D_2}$ as two half-sample generated by the uniform random sampling without replacement, then $D = \left\{ {{D_1},{D_2}} \right\}$. The ${\hat \beta _{{D_1}}}$ is the estimation of parameter according to one of the half sample $D_1$.
-
-To simulate a real-world scenario, in the situation that we only known $D_1$ but not $D_2$, the ${\hat \beta _{{D_1}}}$ seems to be the best choice. However, with the involving of $D_2$ as the external data, there are several ways to improve $D_1$. One most direct way is to combine two half samples into $D$, then get ${\hat \beta _D}$, however, the transfer learning procedure we proposed suggests another possible way. We here only verify that $\left\| {{{\hat \beta }_{TL}} - {{\hat \beta }_D}} \right\|_2^2 \ll \left\| {{{\hat \beta }_{{D_1}}} - {{\hat \beta }_D}} \right\|_2^2$. As ${{{\hat \beta }_D}}$ is certainly closer than the true $\beta$, hence we can here verify that ${{{\hat \beta }_{TL}}}$ given by the transfer learning procedure leads a correct way to the true $\beta$. This has verified to be ture from our code, as
+In this session, I will verify the performance of transfer learning, i.e. proving that it indeed can take advantage of the external data to improve the estimator, based on the down-sample data. Denote $D$ as the whole down-sample data. The ${\hat \beta _D}$ is the estimate of the parameter obtained from the previous session according to this whole sample. Denote ${D_1},{D_2}$ as two half-sample generated by the uniform random sampling without replacement, then $D = \left\{ {{D_1},{D_2}} \right\}$. The ${\hat \beta _{{D_1}}}$ is the estimation of the parameter according to one of the half sample $D_1$.  
+  
+\newpage  
+To simulate a real-world scenario, in the situation that $D_1$ is known but $D_2$ is unknown, the ${\hat \beta _{{D_1}}}$ seems to be the best choice. However, with the involvement of $D_2$ as the external data, there are several ways to improve $D_1$. One most direct way is to combine two half samples into $D$, then get ${\hat \beta _D}$, however, the transfer learning procedure just proposed suggests another possible way. Here only verify that $\left\| {{{\hat \beta }_{TL}} - {{\hat \beta }_D}} \right\|_2^2 \ll \left\| {{{\hat \beta }_{{D_1}}} - {{\hat \beta }_D}} \right\|_2^2$. As ${{{\hat \beta }_D}}$ is certainly closer than the true $\beta$, hence we can here verify that ${{{\hat \beta }_{TL}}}$ given by the transfer learning procedure leads a correct way to the true $\beta$. This has verified to be true from our code, as
 $$
 \left\| {{{\hat \beta }_{TL}} - {{\hat \beta }_D}} \right\|_2^2 = 0.002268502 \ll 0.03938093 = \left\| {{{\hat \beta }_{{D_1}}} - {{\hat \beta }_D}} \right\|_2^2
 $$
@@ -276,38 +290,46 @@ $$
   
 # Section 5. Model Evaulation and Concluding Remarks  
 
-Two models are used, namely logistic regression with regularization and SVM, along with two different methods (downsampling and weighted loss function) for processing imbalanced dataset. To evaluate the model properly, AUC is adopted. The implicit goal of AUC is to deal with the highly skewed distribution of the data set, and not to overfit a single class.  
+The logistic regression with regularization along with two different methods (down-sampling and weighted loss function) is used for processing the unbalanced data set. To evaluate the model properly, AUC is adopted. The implicit goal of AUC is to deal with the highly skewed distribution of the data set, and not to overfit a single class.  
   
 
-Table 8 summarizes these four combinations. Logistic regression with weighted loss function has the highest AUC of 0.8448. Moreover, the performances of the two SVMs are not as good as the logistic regression model. Considering the time required to construct the model, it is concluded that SVM is not an optimal model for large sample size data.
+Weighted Logistic regression has a higher AUC of 0.8721828, compared to the down-sampling method with 0.870063. However, the performance of the two logistic regression models is similar, and the model calculation time of the weighted loss function is more than three times that of the down-sampling method. Considering the time consumption of constructing the model, it is concluded that down-sampling is an optimal method for large sample size data, even sacrifice some prediction accuracy.
 
 
   
-In the future data preprocessing process, one option is to eliminate outliers. In a logistic regression model with regularization, it is difficult to perform a goodness-of-fit test using the current package. However, some papers are discussing these tests. Interaction terms and quadratic terms or higher-order terms may be considered in the model. In addition, CART model may be a better choice for large sample size data.
+In future studies, interaction terms and quadratic terms or higher-order terms may be considered to add to the model. In addition, CART model may be a better choice for large sample size data.
 
-# Appendix
-## A.1. References  
-1. Chao-Ying Joanne Peng, Kuk Lida Lee Gary M. Ingersoll (2002). An Introduction to Logistic Regression Analysis and Reporting Article. The Journal of Educational Research. September 2002 (3-14)
-2. Roger Koenker, Jungmo Yoon. Parametric Links for Binary Choice Models: A Fisherian-Bayesian Colloquy. http://www.econ.uiuc.edu/~roger/research/links/links.pdf
-3. Yihui Xie, Christophe Dervieux, Emily Riederer. R Markdown Cookbook
-4. R. Berwick. An Idiot’s guide to Support vector machines (SVMs). https://web.mit.edu/6.034/wwwbob/svm.pdf
-5. Trevor Hastie, Junyang Qian. An Introduction to glmnet. https://cloud.r-project.org/web/packages/glmnet/vignettes/glmnet.pdf
+# References
+1. Allison C. Nugent, Elizabeth D. Ballard, Lawrence T. Park & Carlos A. Zarate Jr. Research on the pathophysiology, treatment, and prevention of suicide: practical and ethical issues. BMC Psychiatry volume 19, Article number: 332 (2019)
+2. Chao-Ying Joanne Peng, Kuk Lida Lee Gary M. Ingersoll (2002). An Introduction to Logistic Regression Analysis and Reporting Article. The Journal of Educational Research. September 2002 (3-14)
+3. Li, Sai, T. Tony Cai, and Hongzhe Li. "Transfer learning for high-dimensional linear regression: Prediction, estimation, and minimax optimality." arXiv preprint arXiv:2006.10593 (2020).
+4. Ly, Alexander, Maarten Marsman, Josine Verhagen, Raoul PPP Grasman, and Eric-Jan Wagenmakers. "A tutorial on Fisher information." Journal of Mathematical Psychology 80 (2017): 40-55.
+5. National Institute of Mental Health-Suicide Definition https://www.nimh.nih.gov/health/statistics/suicide
+6. Rigollet, Philippe, and Alexandre Tsybakov. "Exponential screening and optimal rates of sparse estimation." The Annals of Statistics 39, no. 2 (2011): 731-771.
+7. Roger Koenker, Jungmo Yoon. Parametric Links for Binary Choice Models: A Fisherian-Bayesian Colloquy. http://www.econ.uiuc.edu/~roger/research/links/links.pdf
+8. Zhou, Shuheng. "Restricted eigenvalue conditions on subgaussian random matrices." arXiv preprint arXiv:0912.4045 (2009).
 
-  
-## A.2. Variable Definitions  
+
+
+# Appendix  
+## A.1 Data Source and Value of Variable Definitions  
+Data file please refer to <https://ftp.cdc.gov/pub/Health_Statistics/NCHS/Datasets/DVS/mortality/mort2019us.zip>.  
+
+Table 6 to table 13 are definitions of value of variables 'edu','sex','age_dt','age_d','mar','place', and 'race'.  
 Variable 'mon' means Month of Death, its value is from 1 to 12 represents January to December.  
+
 Variable 'week' means Day of Week Death, its value is from 1 to 7 and 9, 1 to 7 represents Sunday to Saturday, 9 means unknown.  
 
 
 |Variable Name  |Full Name                |
-|--------------|---------------------   |
+|--------------|---------------------|
 |edu            |Education (2003 revision)|
-|--------------|---------------------   |
+|--------------|---------------------|
 |Value          |Definition               |
-|--------------|---------------------   |
+|--------------|---------------------|
 |1|8th grade or less|
 |2|9 - 12th grade, no diploma|
-|3|9 - 12th grade, no diploma|
+|3|high school graduate or GED completed|
 |4|some college credit, but no degree|
 |5|Associate degree |
 |6|Bachelor’s degree |
@@ -329,17 +351,28 @@ Table: Definition of sex
 
 |Variable Name  |Full Name              |
 |--------------|---------------------   |
-|age            |Age|
+|age_dt            |Age Detailed Type|
 |--------------|---------------------   |
 |Value          |Definition             |
 |--------------|---------------------   |
-|1    001-135,999|Years |
-|2    001-011,999|Months|
-|4    001-027,999|Days|
-|5    001-023,999|Hours|
-|6    001-059,999|Minutes|
-|9    999|Age not stated|
-Table: Definition of age
+|1|Years |
+|2|Months|
+|4|Days|
+|5|Hours|
+|6|Minutes|
+|9|Age not stated|
+Table: Definition of age_dt
+
+
+|Variable Name  |Full Name              |
+|--------------|---------------------   |
+|age_d            |Age Detailed Number|
+|--------------|---------------------   |
+|Value          |Definition             |
+|--------------|---------------------   |
+|001-135|Number|
+|999|Age not stated|
+Table: Definition of age_d
 
 
 |Variable Name  |Full Name              |
@@ -369,7 +402,8 @@ Table: Definition of mar
 |6|Self-Inflicted|
 |7|Natural|
 |Blank|Not specified|
-Table: Definition of manner
+Table: Definition of manner  
+
 Note: Manner of Death equals to 2 means Suicide case, which is denoted by Y. Manner of Death not equals to 2 means not Suicide case, which is denoted by N.
 
 |Variable Name  |Full Name                |
@@ -405,13 +439,52 @@ Table: Definition of place
 Table: Definition of race
 
 
+## A.2 Data Description Summplement
+
+Table 14 shows the first six observations of import directly from Mortality Multiple Cause Files(2019). Values of variables definition are in Appendix A.1.
+
+ 
+```{r, echo=FALSE}
+table14 <- read.table('table14.txt',header = T)
+knitr::kable(table14,col.names = gsub("[.]", " ", names(table14)),align = "lccrr", caption ='First Six Observations')
+```
+  
 
 
+Table 15 to Table 19 are frequency tables of variables Place of Death, Month, Education, Day of Week, and Race. All the unstated values are blank are not counted.
+
+|Place of Death  |Value |0|1|2|3|4|5|6|7|8|
+|:---:|:----:|:---:|:---:|:----:|:---:|:---:|:----:|:---:|:---:|:----:|
+|Suicide  |Number|31924 |905| 347|51|1877|1958|510|249|5799|
+|Overall  |Number|117895|11712|2226|341|9181|8162|1132|673|18536|
+Table: Frequency Table of Place of Death  
+  
+
+|Month |Value |01|02|03|04|05|06|07|08|09|10|11|12|
+|:---:|:----:|:---:|:---:|:----:|:---:|:---:|:----:|:---:|:---:|:----:|:---:|:---:|:----:|
+|Suicide  |Num|3480|3265|3764|3658|3712|3740|3814|3860|3802|3765|3337|3423|
+|Overall|Num|225730|203252|223112|206252|207902|198056|202398|202244|198225|211107|212380|226735| 
+Table: Frequency Table of Month
 
 
+|Education(2003 version)|Value |1|2|3|4|5|6|7|8|
+|:---:|:----:|:---:|:---:|:----:|:---:|:---:|:----:|:---:|:---:|
+|Suicide  |Number|1628|5064|17864|7537|3306|5571|1801|849|
+|Overall  |Number|230783|263586|1108660|316830|166396|271313|114825|45000|
+Table: Frequency Table of Education  
 
+|Day of Week|Value |1|2|3|4|5|6|7|
+|:---:|:----:|:---:|:---:|:----:|:---:|:---:|:----:|:---:|
+|Suicide  |Number|6160|6796|6664|6178|5990|6143|5689| 
+|Overall  |Number|356432|359437|363380|357025|357770|361606|361616|
+Table: Frequency Table of Day of Week  
+  
 
-
+|Race|Value |1|2|3|4|
+|:---:|:----:|:---:|:---:|:----:|:---:|
+|Suicide  |Number|38610|2999|602|1409| 
+|Overall  |Number|2131072|316930|18658|50733| 
+Table: Frequency Table of Race
   
 
  
@@ -419,19 +492,19 @@ Table: Definition of race
   
 
 
-## A.5 The proof of the convergence rate of trans-logistic regression.
+## B. The proof of the Convergence Rate of Trans-logistic Regression
 
 Let the limit of ${{\hat w}^A}$ is $w^A$. That is to say,
 
 $$
 w^A \in \mathop {\arg \min }\limits_{\tilde w} \sum\limits_{k \in \left\{ {0,1} \right\}} {E\left[ {\log \left( {1 + \exp \left( { - y_i^{\left( k \right)}\tilde x_i^{\left( k \right)T}\tilde w} \right)} \right)} \right]}. 
 $$
-Hence, if we let ${\delta ^A} = \beta  - {w^A}$, then we can express ${\delta ^A}$ by ${\delta ^{\left( 1 \right)}}$, i.e. $\beta  - {w^{\left( 1 \right)}}$:
+Hence, if let ${\delta ^A} = \beta  - {w^A}$, then ${\delta ^A}$ can be expressed by ${\delta ^{\left( 1 \right)}}$, i.e. $\beta  - {w^{\left( 1 \right)}}$:
 $$
 {\delta ^A} = \frac{{{n_1}}}{{{n_1} + {n_0}}}{\delta ^{\left( 1 \right)}}.
 $$
 
-Moreover, we define the estimation of Haissan matrix:
+Moreover, define the estimation of Hessian matrix:
 
 $$
 \begin{array}{l}
@@ -441,15 +514,15 @@ $$
 \end{array}
 $$
 
-### Lemma 1 (Restricted eigenvalue condition)
+### Lemma 1 (Restricted eigenvalue condition) {.unlisted .unnumbered}
 Under the restricted eigenvalue condition, with positive $r_1$ and $r_2$ such that ${r_1}\left( {\log p/\left( {{n_1} + {n_0}} \right)} \right) = o\left( 1 \right)$ and ${r_2}\left( {\log p/{n_0}} \right) = o\left( 1 \right)$, we have
 $$
 \min \left\{ {\mathop {\inf }\limits_{0 \ne u \in {B_1}\left( {{r_1}} \right)} \frac{{{u^T}\hat Hu}}{{\left\| u \right\|_2^2}} \ge {\phi _0},\mathop {\inf }\limits_{0 \ne u \in {B_1}\left( {{r_2}} \right)} \frac{{{u^T}\hat H\left( \beta  \right)u}}{{\left\| u \right\|_2^2}}} \right\} \ge {\phi _0}.
 $$
 
 
-### Lemma 2 ($w$ part)
-Under the conditions 1,2 and 3, we have for $\hat u = {{\hat w}^A} - {w^A}$, we have
+### Lemma 2 ($w$ part) {.unlisted .unnumbered}
+Under the conditions 1,2 and 3, for $\hat u = {{\hat w}^A} - {w^A}$, we have
 $$
 \begin{array}{*{20}{l}}
 {\max \left\{ {{{\left( {\hat u} \right)}^T}\hat H\hat u,\left\| {\hat u} \right\|_2^2} \right\} = {O_P}\left( {s\lambda _w^2 + {\lambda _w}h} \right)}\\
@@ -458,8 +531,8 @@ $$
 $$
 
 
-### Lemma 3 ($\delta$ part)
-Under the conditions 1,2 and 3, we have for $\hat v = {{\hat \delta}^A} - {\delta^A}$, we have
+### Lemma 3 ($\delta$ part) {.unlisted .unnumbered}
+Under the conditions 1,2 and 3, for $\hat v = {{\hat \delta}^A} - {\delta^A}$, we have
 $$
 \begin{array}{*{20}{l}}
 {\max \left\{ {{{\left( {\hat v} \right)}^T}\hat H\hat v,\left\| {\hat v} \right\|_2^2} \right\} = {O_P}\left( {s\lambda _w^2 + {\lambda _w}h + {\lambda _\delta }h} \right)}\\
@@ -467,7 +540,7 @@ $$
 \end{array}
 $$
 
-### Proof of theorem:
+### Proof of theorem: {.unlisted .unnumbered}
 Combining the following inequalities
 $$
 \begin{array}{l}
@@ -482,7 +555,7 @@ $$
  \le {\left( {{{\hat w}^A} - {w^A}} \right)^T}H\left( \beta  \right)\left( {{{\hat w}^A} - {w^A}} \right) + {\left( {{{\hat \delta }^A} - {\delta ^A}} \right)^T}H\left( \beta  \right)\left( {{{\hat \delta }^A} - {\delta ^A}} \right),
 \end{array}
 $$
-lemma 2 and lemma 3, we can directly lead to the final conclusion by noticing $\left\| {H\left( \beta  \right) - \hat H} \right\| \to 0$ under the condition 1 as $n \to \infty$.
+lemma 2 and lemma 3,We can draw the final conclusion directly by noting $\left\| {H\left( \beta  \right) - \hat H} \right\| \to 0$ under the condition 1 as $n \to \infty$.
 
 
 
